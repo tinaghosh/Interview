@@ -11,3 +11,6 @@ find "$repo_dir/src/main/java" "$repo_dir/src/test/java" -name '*.java' -print0 
   | xargs -0 javac --release 17 -d "$output_dir"
 
 java -cp "$output_dir" com.example.tokenvalidation.StarterTestRunner
+java -cp "$output_dir" com.example.tokenvalidation.CircuitBreakerTestRunner
+java -cp "$output_dir" com.example.tokenvalidation.TimeoutTestRunner
+java -cp "$output_dir" com.example.tokenvalidation.ServiceCircuitBreakerTestRunner

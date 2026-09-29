@@ -25,6 +25,10 @@ public final class StarterTestRunner {
         execute("returns valid decision", this::returnsValidDecision);
         execute("rejects missing token", this::rejectsMissingToken);
         execute("retries downstream failure", this::retriesDownstreamFailure);
+        execute("success path logs neither token nor customer id", this::successLogsAreRedacted);
+        execute("rejection path logs neither token nor customer id", this::rejectionLogsAreRedacted);
+        execute("failure path does not log exception messages that echo the token",
+                this::failureLogsAreRedacted);
 
         System.out.printf("%nResult: %d passed, %d failed%n", passed, failed);
         if (failed > 0) {
@@ -73,6 +77,49 @@ public final class StarterTestRunner {
         check(calls.get() == 3, "expected three attempts");
     }
 
+    private static final String TOKEN = "header.payload.signature";
+    private static final String CUSTOMER = "customer-456";
+
+    private void successLogsAreRedacted() {
+        FakeAuditLogger logger = new FakeAuditLogger();
+        service(token -> AuthorizationDecision.active("subject-123"), logger, new FakeMetrics())
+                .validate(TOKEN, CUSTOMER);
+
+        check(logger.has("validation_started"), "expected validation_started entry");
+        check(logger.has("validation_succeeded"), "expected validation_succeeded entry");
+        assertRedacted(logger);
+    }
+
+    private void rejectionLogsAreRedacted() {
+        FakeAuditLogger logger = new FakeAuditLogger();
+        // A downstream reason that echoes the token must not reach the log either.
+        service(token -> AuthorizationDecision.inactive("revoked: " + token), logger, new FakeMetrics())
+                .validate(TOKEN, CUSTOMER);
+
+        check(logger.has("validation_rejected"), "expected validation_rejected entry");
+        assertRedacted(logger);
+    }
+
+    private void failureLogsAreRedacted() {
+        FakeAuditLogger logger = new FakeAuditLogger();
+        service(token -> {
+            throw new IllegalStateException("bad request for token " + token + " customer " + CUSTOMER);
+        }, logger, new FakeMetrics()).validate(TOKEN, CUSTOMER);
+
+        check(logger.has("downstream_failure"), "expected downstream_failure entry");
+        check(logger.entries.stream().anyMatch(e -> e.contains("errorType=IllegalStateException")),
+                "expected exception type to be logged for diagnosis");
+        assertRedacted(logger);
+    }
+
+    private static void assertRedacted(FakeAuditLogger logger) {
+        for (String entry : logger.entries) {
+            check(!entry.contains(TOKEN), "log leaked the token: " + entry.replace(TOKEN, "<TOKEN>"));
+            check(!entry.contains("signature"), "log leaked part of the token: " + entry);
+            check(!entry.contains(CUSTOMER), "log leaked the customer id: " + entry);
+        }
+    }
+
     private TokenValidationService service(
             DownstreamAuthorizationClient downstream,
             FakeAuditLogger logger,
@@ -113,6 +160,10 @@ public final class StarterTestRunner {
         public void warn(String event, String details) {
             entries.add("WARN " + event + " " + details);
         }
+
+        boolean has(String event) {
+            return entries.stream().anyMatch(e -> e.contains(" " + event + " "));
+        }
     }
 
     static final class FakeMetrics implements MetricsRecorder {
@@ -133,3 +184,6 @@ public final class StarterTestRunner {
         }
     }
 }
+
+  min no time/count
+closed -> open ->  half-open (failure rate 100%) -> failure mechanism

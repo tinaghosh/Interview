@@ -12,4 +12,9 @@ $Sources = Get-ChildItem -Recurse -Filter *.java `
     (Join-Path $RepoDir "src/test/java") | ForEach-Object FullName
 
 javac --release 17 -d $OutputDir $Sources
-java -cp $OutputDir com.example.tokenvalidation.StarterTestRunner
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+foreach ($Runner in @("StarterTestRunner", "CircuitBreakerTestRunner", "TimeoutTestRunner", "ServiceCircuitBreakerTestRunner")) {
+    java -cp $OutputDir "com.example.tokenvalidation.$Runner"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
